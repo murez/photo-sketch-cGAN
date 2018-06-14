@@ -46,38 +46,46 @@ def to_tensor(picture):
     else:
         return img
 
+
 class CUFS(data.Dataset):
-    def __init__(self, dataPath='training_data/photo/', loadSize = 64, fineSize = 64, flip = 1):
+    def __init__(self, photo_dir='training_data/photo/', sketch_dir='training_data/sketch/', loadSize = 256, fineSize = 256):
         super(CUFS, self).__init__()
-        self.data_list = [x for x in listdir(dataPath) if is_image_file(x)]
-        self.dataPath = dataPath
+        self.photo_list = [x for x in listdir(photo_dir) if is_image_file(x)]
+        self.sketch_list = [x for x in listdir(sketch_dir) if is_image_file(x)]
+        self.photo_sketch_dict = dict(zip(listdir(photo_dir), listdir(sketch_dir)))
+        self.photo_dir = photo_dir
+        self.sketch_dir = sketch_dir
         self.loadSize = loadSize
         self.fineSize = fineSize
-        self.flip = flip
 
     def __getitem__(self, index):
-        path = os.path.join(self.dataPath, self.data_list[index])
-        img = default_loader(path)
-        width, height = img.size
+        photo_path = os.path.join(self.photo_dir, self.photo_list[index])
+        sketch_path = os.path.join(self.sketch_dir, self.photo_sketch_dict[photo_list[index]])
+        photo = default_loader(photo_path)
+        sketch = default_loader(sketch_path)
+        width, height = photo.size
 
         if (height != self.loadSize):
-            img = img.resize((self.loadSize, self.loadSize), Image.BILINEAR)
+            photo = photo.resize((self.loadSize, self.loadSize), Image.BILINEAR)
+            sketch = sketch.resize((self.loadSize, self.loadSize), Image.BILINEAR)
 
         if (self.loadSize != self.fineSize):
             x = math.floor((self.loadSize - self.fineSize)/2)
             y = math.floor((self.loadSize - self.fineSize)/2)
-            img = img.crop((x, y, x+self.fineSize, y+self.fineSize))
+            photo = photo.crop((x, y, x+self.fineSize, y+self.fineSize))
+            sketch = sketch.crop((x, y, x+self.fineSize, y+self.fineSize))
 
-        #img.show()
-        img = to_tensor(img)
-        #img = img.mul_(2).add_(-1)
-
-        return img
+        # photo.show()
+        photo = to_tensor(photo)
+        sketch = to_tensor(sketch)
+        item = {'photo': photo, 'sketch': sketch}
+        return photo, sketch
 
     def __len__(self):
-        return len(self.data_list)
+        assert(len(self.photo_list) != len(self.sketch_list)), "More photos than sketches"
+        return len(self.photo_list)
 
-def get_loader(dir, batch_size, scale_size, num_workers=12, shuffle=True):
-    dataset = CUFS(dir, scale_size, scale_size, 1)
+def get_loader(photo_dir, sketch_dir, batch_size, scale_size, num_workers=12, shuffle=True):
+    dataset = CUFS(photo_dir, sketch_dir, scale_size, scale_size)
     data_loader = torch.utils.data.DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     return data_loader
