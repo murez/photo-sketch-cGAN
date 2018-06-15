@@ -5,6 +5,7 @@ from os import listdir
 from os.path import join
 
 import torch
+from torch.autograd import Variable
 from torchvision import transforms
 import torch.utils.data as data
 from PIL import Image
@@ -46,7 +47,6 @@ def to_tensor(picture):
     else:
         return img
 
-
 class CUFS(data.Dataset):
     def __init__(self, photo_dir='training_data/photo/', sketch_dir='training_data/sketch/', loadSize = 256, fineSize = 256):
         super(CUFS, self).__init__()
@@ -57,6 +57,10 @@ class CUFS(data.Dataset):
         self.sketch_dir = sketch_dir
         self.loadSize = loadSize
         self.fineSize = fineSize
+        self.photo_matrix = Variable(torch.FloatTensor())   # Will be initialized in train()
+        self.sketch_matrix = Variable(torch.FloatTensor())
+        self.hidden_photo_matrix = Variable(torch.FloatTensor())
+        self.hidden_sketch_matrix = Variable(torch.FloatTensor())
 
     def __getitem__(self, index):
         photo_path = os.path.join(self.photo_dir, self.photo_list[index])

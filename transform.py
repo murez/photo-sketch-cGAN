@@ -4,13 +4,13 @@ from os.path import join
 from os import listdir
 
 import torch
+from torch.autograd import Variable
 from torchvision import transforms
 import torch.utils.data as data
 from PIL import Image
 
 import random
 import math
-
 from dataloader import *
 
 def to_patch_matrices(CUFS_data):
@@ -58,12 +58,51 @@ def to_patch(tensor, patch_size=13, r=2/3, dim=1):
     output = output[:,patch_size:]
     return output
 
+'''Is this correct?'''
+def inverse_to_patch(patch_matrix, patch_size=13, scale_size=256, r=2/3):
+    '''
+    Inverse transformation for to_patch()
+    '''
+    overlapping_size = math.sqrt(math.pow(patch_size,2)*(1-r))
+    overlapping_size = (int)((patch_size-overlapping_size) / 2)
+    increment = patch_size - overlapping_size
+    num_patches = (int)((scale_size-overlapping_size)/increment) + 1
+    remainder = scale_size - increment*(num_patches-1)
+    patch_count = 0
+
+    image_tensor = Variable(torch.FloatTensor())
+    for y in range(num_patches - 1):
+        row_tensor = Variable(torch.FloatTensor())
+        for x in range(num_patches):
+            if (x < num_patches - 1):
+                row_tensor = torch.cat((row_tensor, patch_matrix[0:increment, patch_count*scale_size:patch_count*scale_size+increment]), 1)
+            else:
+                row_tensor = torch.cat((row_tensor, patch_matrix[0:increment, (patch_count+1)*scale_size-remainder:(patch_count+1)*scale_size]), 1)
+            patch_count += 1
+        # end for
+        image_tensor = torch.cat((image_tensor, row_tensor), 0)
+    # end for
+
+    # Last row
+    row_tensor = Variable(torch.FloatTensor())
+    for x in range(num_patches):
+        if (x < num_patches - 1):
+            row_tensor = torch.cat((row_tensor, patch_matrix[scale_size-remainder:scale_size, patch_count*scale_size:patch_count*scale_size+increment]), 1)
+        else:
+            row_tensor = torch.cat((row_tensor, patch_matrix[scale_size-remainder:scale_size, (patch_count+1)*scale_size-remainder:(patch_count+1)*scale_size]), 1)
+        patch_count += 1
+    # end for
+    image_tensor = torch.cat((image_tensor, row_tensor), 0)
+
+    return image_tensor
+
 def calculate_weight(x_prime, x_o, x_h):
     '''
     Input:
     x_prime: test photo patch matrix
     x_o: original trainig photo patch matrix
     x_h: hidden training photo patch matrix obtained from GAN
+    inputs can't be empty!!!
     Output: weight matrix of type torch.tensor
     '''
     x_prime = x_prime.numpy()

@@ -32,13 +32,14 @@ parser.add_argument('--beta_hi',default=0.999, type=float)
 parser.add_argument('--sample_dir', default='sample/', type=str)
 parser.add_argument('--step_size', default=30, type=int)    # learning rate optimizer step size
 parser.add_argument('--gamma', default=0.1, type=float)      # learning rate optimizer decay parameter
-parser.add_argument('--base_path', default="training_data/", type=str)
-parser.add_argument('--photo_dir', default="photo/", type=str)
-parser.add_argument('--sketch_dir', default="sketch/", type=str)
-
+parser.add_argument('--base_path', default='training_data/', type=str)
+parser.add_argument('--photo_dir', default='photo/', type=str)
+parser.add_argument('--sketch_dir', default='sketch/', type=str)
+parser.add_argument('--fake_photo_path', default='hidden_training_data/photo/', type=str)
+parser.add_argument('--fake_sketch_path', default='hidden_training_data/sketch/', type=str)
+parser.add_argument('--epoch_save', default=10, type=int)   # After 10 epochs, starting saving fake images(sketches)
 
 args = parser.parse_args()
-
 
 def onehot_encoding(x, num_classes=10):
     if isinstance(x, int):
@@ -115,7 +116,6 @@ class GAN():
             num_iter = 0
 
             for idx, (photo, sketch) in enumerate(self.data_loader):
-                step += 1
                 # ================================================== #
                 #               Train the Discriminator              #
                 # ================================================== #
@@ -130,8 +130,8 @@ class GAN():
 
                 # Compute BCE_Loss using fake images
                 self.z.data.uniform_(-1,1).to(device)   # z.size = args.b_size, args.h
-                fake_image = self.generator(self.z, x)
-                output_z = self.discriminator(fake_image, x)
+                fake_sketch = self.generator(self.z, x)
+                output_z = self.discriminator(fake_sketch, x)
                 d_loss_fake = self.criterion(output_z, fake_labels)
                 d_loss = d_loss_real + d_loss_fake
                 D_losses.append(d_loss.data[0])
@@ -152,6 +152,31 @@ class GAN():
                 self.reset_gradient()
                 g_loss.backward()
                 self.g_optimizer.step()
+
+                # Save images
+                # Save real images
+                if (epoch+1) == 1:
+                    path = os.path.join(args.sample_dir, 'real_sketch.jpg')
+                    vutils.save_image(image.mul(255).byte(),path)
+                    photo_matrix, sketch_matrix = to_patch_matrices(self.dataset)
+                    self.dataset.photo_matrix = photo_matrix
+                    self.dataset.sketch_matrix = sketch_matrix
+
+                # Save fake images
+                if (epoch+1) > args.epoch_save:
+                    save_sketch_path = os.path.join(args.fake_sketch_path, 'fake_sketch-idx{}-epoch{}.jpg'.format(idx,epoch+1))
+                    # Calculate weight matrix to obtain corresponding photo, and add it to photo directory
+                    fake_sketch_patch = to_patch(fake_sketch)
+                    weight_matrix = calculate_weight(fake_sketch_patch, self.dataset.sketch_matrix, self.dataset.hidden_sketch_matrix)
+                    self.dataset.hidden_sketch_matrix = torch.cat((self.dataset.hidden_sketch_matrix, fake_sketch_patch), 1)
+                    vutils.save_image(fake_sketch.mul(255).byte(), save_sketch_path)
+
+                    save_photo_path = os.path.join(args.fake_photo_path, 'fake_photo-idx{}-epoch{}.jpg'.format(idx,epoch+1))
+                    fake_photo_patch = torch.mm(torch.cat((self.dataset.photo_matrix, self.dataset.hidden_photo_matrix),1), weight_matrix)
+                    self.dataset.hidden_photo_matrix = torch.cat((self.dataset.hidden_photo_matrix, fake_photo_patch), 1)
+                    # Reconstruct the photo from the estimated photo_patch_matrix
+                    fake_photo = inverse_to_patch(fake_photo_patch)
+                    vutils.save_image(fake_photo.mul(255).byte(), save_photo_path)
             # end for
 
             epoch_end_time = time.time()
@@ -160,19 +185,6 @@ class GAN():
             # Print epoch result on the terminal
             print('Epoch: [%d/%d] - time_per_epoch: %.2f, d_loss: %.3f, g_loss: %.3f' % (epoch + 1), args.epochs, time_per_epoch,
                                                                                     torch.mean(torch.FloatTensor(D_losses)), torch.mean(torch.FloatTensor(G_losses)))
-            # Save images
-            # Save real images
-            if (epoch+1) == 1:
-                path = os.path.join(args.sample_dir, 'real_sketch.jpg')
-                vutils.save_image(image.mul(255).byte(),path)
-
-             # Save fake images
-             epoch_save = 10   # After 10 epochs, starting saving fake images(sketches)
-             if (epoch+1) > epoch_save:
-                 path = os.path.join(args.sketch_path, 'fake_sketch-{}.jpg'.format(epoch+1))
-                 # Calculate weight matrix to obtain corresponding photo, and add it to photo directory
-
-                 vutils.save_image(fake_image.mul(255).byte(), path)
 
              train_dict['D_losses'].append(torch.mean(torch.FloatTensor(D_losses)))
              train_dict['G_losses'].append(torch.mean(torch.FloatTensor(G_losses)))

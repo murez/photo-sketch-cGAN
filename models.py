@@ -79,7 +79,8 @@ class Discriminator(nn.Module):
         self.conv6 = nn.Conv2d(3*self.num_channel, 3*self.num_channel, 3, 1, 1)
         self.conv6_bn = nn.BatchNorm2d(3*self.num_channel)
         self.fc = nn.Linear((self.scale_size/4)*(self.scale_size/4)*3*self.num_channel, self.h)
-
+        # Need more layers?
+        
     def forward(self, input, label):
         x = F.elu(self.conv0_1(input), True)
         y = F.elu(self.conv0_2(label), True)
