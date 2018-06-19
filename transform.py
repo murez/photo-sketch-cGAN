@@ -19,7 +19,8 @@ def to_patch_matrices(CUFS_data):
     for idx in range(len(CUFS_data)):
         if (idx == 0):
             continue
-        photo, sketch = CUFS_data[idx] # photo and sketch tensor
+        photo = to_patch(CUFS_data[idx]['photo']) # photo and sketch tensor
+        sketch = to_patch(CUFS_data[idx]['sketch'])
         photo_matrix = torch.cat((photo_matrix, photo), 1)
         sketch_matrix = torch.cat((sketch_matrix, sketch), 1)
     return photo_matrix, sketch_matrix
@@ -31,10 +32,10 @@ def to_patch(tensor, patch_size=13, r=2/3, dim=1):
     Input:
     tensor: two dimensional torch.tensor
     '''
-    '''
+
     tensor = (tensor[0,:,:] + tensor[1,:,:] + tensor[2,:,:]).div(3)
     tensor = tensor.transpose(0,1)
-    '''
+
     overlapping_size = math.sqrt(math.pow(patch_size,2) * (1-r))
     overlapping_size = (int)((patch_size - overlapping_size) / 2)
     increment = patch_size - overlapping_size

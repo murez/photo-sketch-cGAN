@@ -21,7 +21,6 @@ class Generator(nn.Module):
         self.b_size = args.b_size
         self.h = args.h
         self.scale_size = args.scale_size
-        self.act_type = args.tanh
         self.disc = disc
 
         ''' Use transpose convolution '''
@@ -36,23 +35,20 @@ class Generator(nn.Module):
         self.deconv4 = nn.ConvTranspose2d(2*self.num_channel, self.num_channel, 3, 1, 1)
         self.deconv4_bn = nn.BatchNorm2d(self.num_channel)
         self.deconv5 = nn.ConvTranspose2d(self.num_channel, 3, 3, 1, 1)
-
+        
     def forward(self, input, label):
-        '''
-        Use elu as activation function.
-        '''
         x = F.elu(self.deconv0_1_bn(self.deconv0_1(input)), True)
         y = F.elu(self.deconv0_2_bn(self.deconv0_2(label)), True)
         x = torch.cat((x,y), 1)
         x = F.elu(self.deconv2_bn(self.deconv2(x)), True)
         x = F.elu(self.deconv3_bn(self.deconv3(x)), True)
         x = F.elu(self.deconv4_bn(self.deconv4(x)), True)
-        x = F.tanh(self.deconv5(x))
+        x = F.sigmoid(self.deconv5(x))
         return x
 
 class Discriminator(nn.Module):
     '''
-    Input image: 32*32*3
+    Input image: b_size*3*256*256
     '''
     def __init__(self, args):
         super(Discriminator, self).__init__()
@@ -62,8 +58,8 @@ class Discriminator(nn.Module):
         self.scale_size = args.scale_size
 
         # Conditional GAN
-        self.conv0_1 = nn.Conv2d(3, self.num_channel/2, 3, 1, 1)
-        self.conv0_2 = nn.Conv2d(3, self.num_channel/2, 3, 1, 1)
+        self.conv0_1 = nn.Conv2d(3, (int)(self.num_channel/2), 3, 1, 1)
+        self.conv0_2 = nn.Conv2d(3, (int)(self.num_channel/2), 3, 1, 1)
         self.conv1 = nn.Conv2d(self.num_channel, self.num_channel, 3, 1, 1)
         self.conv1_bn = nn.BatchNorm2d(self.num_channel)
         self.conv2 = nn.Conv2d(self.num_channel, 2*self.num_channel, 3, 1, 1)
@@ -80,8 +76,9 @@ class Discriminator(nn.Module):
         self.conv6_bn = nn.BatchNorm2d(3*self.num_channel)
         self.fc = nn.Linear((self.scale_size/4)*(self.scale_size/4)*3*self.num_channel, self.h)
         # Need more layers?
-        
+
     def forward(self, input, label):
+        # input, label must be size of (b_size, C, H, W)
         x = F.elu(self.conv0_1(input), True)
         y = F.elu(self.conv0_2(label), True)
         x = torch.cat((x,y), 1)     # Discriminator conditions on label
@@ -97,5 +94,5 @@ class Discriminator(nn.Module):
         x = F.elu(self.conv5_bn(self.conv5(x)), True)
         x = F.elu(self.conv6_bn(self.conv6(x)), True)
         x = x.view(self.b_size, (self.scale_size/4)*(self.scale_size/4)*3*self.num_channel)
-        x = F.elu(self.fc(x), True)
-        return x
+        x = F.sigmoid(self.fc(x))
+        return x    # Size of (b_size, h), value should be between 0 and 1

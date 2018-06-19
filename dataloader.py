@@ -64,7 +64,7 @@ class CUFS(data.Dataset):
 
     def __getitem__(self, index):
         photo_path = os.path.join(self.photo_dir, self.photo_list[index])
-        sketch_path = os.path.join(self.sketch_dir, self.photo_sketch_dict[photo_list[index]])
+        sketch_path = os.path.join(self.sketch_dir, self.photo_sketch_dict[self.photo_list[index]])
         photo = default_loader(photo_path)
         sketch = default_loader(sketch_path)
         width, height = photo.size
@@ -83,7 +83,7 @@ class CUFS(data.Dataset):
         photo = to_tensor(photo)
         sketch = to_tensor(sketch)
         item = {'photo': photo, 'sketch': sketch}
-        return photo, sketch
+        return item
 
     def __len__(self):
         assert(len(self.photo_list) != len(self.sketch_list)), "More photos than sketches"
