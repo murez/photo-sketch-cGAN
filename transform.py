@@ -33,7 +33,7 @@ def to_patch(tensor, patch_size=13, r=2/3, dim=1):
     tensor: two dimensional torch.tensor
     '''
 
-    tensor = (tensor[0,:,:] + tensor[1,:,:] + tensor[2,:,:]).div(3)
+    # tensor = (tensor[0,:,:] + tensor[1,:,:] + tensor[2,:,:]).div(3)
     tensor = tensor.transpose(0,1)
 
     overlapping_size = math.sqrt(math.pow(patch_size,2) * (1-r))

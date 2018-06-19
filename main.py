@@ -164,7 +164,8 @@ class GAN():
                 # Save images
                 # Save real images
                 if (epoch+1) == 1:
-                    path = os.path.join(args.sample_dir, 'real_sketch.jpg')
+                    print("Reach Line 167")
+                    path = os.path.join(args.sample_dir, 'real_sketch-idx{}.jpg'.format(idx))
                     vutils.save_image(sketch.mul(255).byte(),path)
                     # Initially, photo_matrix.size() = sketch_matrix.size() = torch.Size([13, 643968])
                     photo_matrix, sketch_matrix = to_patch_matrices(self.dataset)
@@ -173,11 +174,13 @@ class GAN():
 
                 # Save fake images
                 if (epoch+1) > args.epoch_save:
+                    print("Reach Line 177")
                     save_sketch_path = os.path.join(args.fake_sketch_path, 'fake_sketch-idx{}-epoch{}.jpg'.format(idx,epoch+1))
                     # Calculate weight matrix to obtain corresponding photo, and add it to photo directory
                     # Perform SVD on each channel
-                    fake_sketch_patch = to_patch(fake_sketch.squeeze(0))
-                    weight_matrix = calculate_weight(fake_sketch_patch, self.dataset.sketch_matrix, self.dataset.hidden_sketch_matrix)
+                    for channel in range(3):
+                        fake_sketch_patch = to_patch(fake_sketch.squeeze(0)[channel, :, :])
+                        weight_matrix = calculate_weight(fake_sketch_patch, self.dataset.sketch_matrix, self.dataset.hidden_sketch_matrix)
                     self.dataset.hidden_sketch_matrix = torch.cat((self.dataset.hidden_sketch_matrix, fake_sketch_patch), 1)
                     vutils.save_image(fake_sketch.mul(255).byte(), save_sketch_path)
 
@@ -189,6 +192,7 @@ class GAN():
                     vutils.save_image(fake_photo.unsqueeze(0).mul(255).byte(), save_photo_path)
 
                 num_iter += 1
+                print("iter: ", num_iter)
             # end for
 
             epoch_end_time = time.time()
