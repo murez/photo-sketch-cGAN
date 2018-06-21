@@ -106,12 +106,13 @@ def calculate_weight(x_prime, x_o, x_h):
     inputs can't be empty!!!
     Output: weight matrix of type torch.tensor
     '''
-    x_prime = x_prime.numpy()
-    x_o = x_o.numpy()
-    x_h = x_h.numpy()
-    U, Sigma, V_x_prime_T = np.linalg.svd(x_prime, full_matrices = True)
-    U, Sigma, V_x_o_T = np.linalg.svd(x_o, full_matrices = True)
-    U, Sigma, V_x_h_T = np.linalg.svd(x_h, full_matrices = True)
+    x = torch.cat((x_prime, x_o, x_h), 1)
+    x = x.numpy()
+    U, Sigma, V_x_T = np.linalg.svd(x, full_matrices=True)
+
+    V_x_prime = np.transpose(V_x_T)[:, 0:x_prime.size(1)]
+    V_x_o = np.transpose(V_x_T)[:, x_prime.size(1): x_prime.size(1)+x_o.size(1)]
+    V_x_h = np.transpose(V_x_T)[:, x_prime.size(1)+x_o.size(1):]
     W_oh = np.dot(np.transpose(V_x_o_T), V_x_prime_T)
     W_ho = np.dot(np.transpose(V_x_h_T), V_x_prime_T)
     W_oh = torch.from_numpy(W_oh)
