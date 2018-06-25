@@ -35,7 +35,7 @@ class Generator(nn.Module):
         self.deconv4 = nn.ConvTranspose2d(2*self.num_channel, self.num_channel, 3, 1, 1)
         self.deconv4_bn = nn.BatchNorm2d(self.num_channel)
         self.deconv5 = nn.ConvTranspose2d(self.num_channel, 3, 3, 1, 1)
-        
+
     def forward(self, input, label):
         x = F.elu(self.deconv0_1_bn(self.deconv0_1(input)), True)
         y = F.elu(self.deconv0_2_bn(self.deconv0_2(label)), True)

@@ -1,16 +1,13 @@
 import argparse
-import random
-import os, time, sys
+import os, time
 import os.path
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.utils as vutils
 from torchvision import transforms
 import numpy as np
-from collections import deque
 
 from dataloader import *
 from models import *
@@ -25,7 +22,7 @@ parser.add_argument('--epochs', default=100, type=int)  # epochs
 parser.add_argument('--lr',default=0.001, type=float)  # learning rate
 # parser.add_argument('--lr_update_step', default=3000, type=float)
 parser.add_argument('--lr_update_type', default=1, type=int)
-parser.add_argument('--scale_size', default=64, type=int)
+parser.add_argument('--scale_size', default=256, type=int)
 parser.add_argument('--num_workers', default=12, type=int)
 parser.add_argument('--beta_lo', default=0.5, type=float)
 parser.add_argument('--beta_hi',default=0.999, type=float)
@@ -37,7 +34,7 @@ parser.add_argument('--photo_dir', default='photo/', type=str)
 parser.add_argument('--sketch_dir', default='sketch/', type=str)
 parser.add_argument('--fake_photo_path', default='hidden_training_data/photo/', type=str)
 parser.add_argument('--fake_sketch_path', default='hidden_training_data/sketch/', type=str)
-parser.add_argument('--epoch_save', default=50, type=int)   # After 10 epochs, starting saving fake images(sketches)
+parser.add_argument('--epoch_save', default=10, type=int)   # After 10 epochs, starting saving fake images(sketches)
 
 args = parser.parse_args()
 
@@ -58,7 +55,6 @@ def onehot_encoding(x, num_classes=10):
 
 class GAN():
     def __init__(self):
-        # self.global_step = args.load_step
         self.prepare_paths()
         self.dataset = CUFS(self.photo_path, self.sketch_path, args.scale_size, args.scale_size)
         self.data_loader = torch.utils.data.DataLoader(dataset=self.dataset, batch_size=args.b_size, shuffle=True, num_workers=args.num_workers)
@@ -66,8 +62,12 @@ class GAN():
         self.z = Variable(torch.FloatTensor(args.b_size, args.h, args.scale_size, args.scale_size)) # noise
 
         self.criterion = nn.BCELoss()   # Input should be between 0 and 1
-        if args.cuda:
-            self.set_cuda()
+        # if args.cuda:
+        self.set_cuda()
+
+        photo_matrix, sketch_matrix = to_patch_matrices(self.dataset)
+        self.dataset.photo_matrix = photo_matrix
+        self.dataset.sketch_matrix = sketch_matrix
 
     def set_cuda(self):
         self.discriminator.cuda()
@@ -131,7 +131,7 @@ class GAN():
                 item = self.dataset[idx]
                 photo = item['photo']
                 sketch = item['sketch']
-                x = photo.unsqueeze(0).to(device)
+                x = photo.unsqueeze(0).to(device)   # Size of (1, 3, 256, 256)
                 y = sketch.unsqueeze(0).to(device)
                 output_x = self.discriminator(y,x)  # output_x.size() = (b_size, h)
                 d_loss_real = self.criterion(output_x, real_labels)
@@ -163,48 +163,45 @@ class GAN():
 
                 # Save images
                 # Save real images
+
                 if (epoch+1) == 1:
-                    print("Reach Line 167")
                     path = os.path.join(args.sample_dir, 'real_sketch-idx{}.jpg'.format(idx))
-                    vutils.save_image(sketch.mul(255).byte(),path)
+                    # vutils.save_image(sketch.mul(-255).add(1).byte(),path)
                     # Initially, photo_matrix.size() = sketch_matrix.size() = torch.Size([13, 643968])
-                    photo_matrix, sketch_matrix = to_patch_matrices(self.dataset)
-                    self.dataset.photo_matrix = photo_matrix
-                    self.dataset.sketch_matrix = sketch_matrix
+                    # print("First epoch   ", "Iter: ", num_iter)
+
 
                 # Save fake images
                 if (epoch+1) > args.epoch_save:
-                    print("Reach Line 177")
                     save_sketch_path = os.path.join(args.fake_sketch_path, 'fake_sketch-idx{}-epoch{}.jpg'.format(idx,epoch+1))
+                    save_photo_path = os.path.join(args.fake_photo_path, 'fake_photo-idx{}-epoch{}.jpg'.format(idx,epoch+1))
                     # Calculate weight matrix to obtain corresponding photo, and add it to photo directory
                     # Perform SVD on each channel
+                    fake_photo = Variable(torch.FloatTensor())
+                    fake_sketch = fake_sketch.cpu()
                     for channel in range(3):
-                        fake_sketch_patch = to_patch(fake_sketch.squeeze(0)[channel, :, :])
+                        fake_sketch_patch = to_patch(fake_sketch.squeeze(0), channel=channel)
                         weight_matrix = calculate_weight(fake_sketch_patch, self.dataset.sketch_matrix, self.dataset.hidden_sketch_matrix)
+                        fake_photo_patch = torch.mm(torch.cat((self.dataset.photo_matrix, self.dataset.hidden_photo_matrix),1), weight_matrix)
+                        # Reconstruct the photo from the estimated photo_patch_matrix
+                        print('Fake_photo_patch: ', fake_photo_patch.size())  # (13, 468)
+                        fake_photo = torch.cat((fake_photo, inverse_to_patch(fake_photo_patch).unsqueeze(0)), 0)
+
                     self.dataset.hidden_sketch_matrix = torch.cat((self.dataset.hidden_sketch_matrix, fake_sketch_patch), 1)
-                    vutils.save_image(fake_sketch.mul(255).byte(), save_sketch_path)
-
-                    save_photo_path = os.path.join(args.fake_photo_path, 'fake_photo-idx{}-epoch{}.jpg'.format(idx,epoch+1))
-                    fake_photo_patch = torch.mm(torch.cat((self.dataset.photo_matrix, self.dataset.hidden_photo_matrix),1), weight_matrix)
+                    vutils.save_image(fake_sketch.mul(-255).add(1).byte(), save_sketch_path)
                     self.dataset.hidden_photo_matrix = torch.cat((self.dataset.hidden_photo_matrix, fake_photo_patch), 1)
-                    # Reconstruct the photo from the estimated photo_patch_matrix
-                    fake_photo = inverse_to_patch(fake_photo_patch)
-                    vutils.save_image(fake_photo.unsqueeze(0).mul(255).byte(), save_photo_path)
-
+                    vutils.save_image(fake_photo.mul(-255).add(1).byte(), save_photo_path) #??
                 num_iter += 1
-                print("iter: ", num_iter)
             # end for
-
             epoch_end_time = time.time()
             time_per_epoch = epoch_end_time - epoch_start_time
 
             # Print epoch result on the terminal
-            print('Epoch: [%d/%d] - time_per_epoch: %.2f, d_loss: %.3f, g_loss: %.3f' % (epoch + 1), args.epochs, time_per_epoch,
-                                                                                    torch.mean(torch.FloatTensor(D_losses)), torch.mean(torch.FloatTensor(G_losses)))
-
             train_dict['D_losses'].append(torch.mean(torch.FloatTensor(D_losses)))
             train_dict['G_losses'].append(torch.mean(torch.FloatTensor(G_losses)))
             train_dict['time_per_epoch'].append(time_per_epoch)
+            print('Epoch: [%d/%d] - time_per_epoch: %.2f, d_loss: %.3f, g_loss: %.3f' % ((epoch + 1), args.epochs, time_per_epoch, train_dict['D_losses'][-1], train_dict['G_losses'][-1]))
+
         # end for
 
         end_time = time.time()

@@ -2,15 +2,12 @@ import os
 import os.path
 import numpy as np
 from os import listdir
-from os.path import join
 
 import torch
 from torch.autograd import Variable
-from torchvision import transforms
 import torch.utils.data as data
 from PIL import Image
 
-import random
 import math
 
 def is_image_file(filename):
