@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.sparse
+from scipy.sparse import csr_matrix
 from sparsesvd import sparsesvd
 import os
 from os.path import join
@@ -125,3 +126,23 @@ def calculate_weight(x_prime, x_o, x_h, empty=False):
 
     # return W_oh, W_ho
     return torch.cat((W_oh, W_ho), 0) # Concatenate along the row
+
+def matrix_multiplication(x, y):
+    '''
+    Input: numpy array
+    '''
+    step = y.shape[1]
+    size = x.shape[0]
+    total_steps = (int)(size / step)
+
+    mini_x = csr_matrix(x[0:step, :])
+    y = csr_matrix(y)
+    output = np.empty([size, step])
+    output[0:step, :] = mini_x.dot(y).A
+    for i in range(total_steps):
+        if (i==0):
+            continue
+        else:
+            mini_x = csr_matrix(x[i*step:(i+1)*step, :])
+            output[i*step:(i+1)*step, :] = mini_x.dot(y).A
+    return output
