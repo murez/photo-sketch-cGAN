@@ -18,7 +18,7 @@ parser.add_argument('--cuda', action='store_true')      # gpu device
 parser.add_argument('--b_size', default=1, type=int)   # batch size
 parser.add_argument('--h', default=64, type=int)        # latent size
 parser.add_argument('--nc', default=64, type=int)       # number of channel
-parser.add_argument('--epochs', default=100, type=int)  # epochs
+parser.add_argument('--epochs', default=20, type=int)  # epochs
 parser.add_argument('--lr',default=0.001, type=float)  # learning rate
 # parser.add_argument('--lr_update_step', default=3000, type=float)
 parser.add_argument('--lr_update_type', default=1, type=int)
@@ -34,7 +34,8 @@ parser.add_argument('--photo_dir', default='photo/', type=str)
 parser.add_argument('--sketch_dir', default='sketch/', type=str)
 parser.add_argument('--fake_photo_path', default='hidden_training_data/photo/', type=str)
 parser.add_argument('--fake_sketch_path', default='hidden_training_data/sketch/', type=str)
-parser.add_argument('--epoch_save', default=10, type=int)   # After 10 epochs, starting saving fake images(sketches)
+parser.add_argument('--pretrain_epochs', default=10, type=int)  # Pretrain the discriminator
+parser.add_argument('--epoch_save', default=20, type=int)   # After 10 epochs, starting saving fake images(sketches)
 
 args = parser.parse_args()
 
@@ -79,6 +80,13 @@ class GAN():
         self.photo_path = os.path.join(args.base_path, args.photo_dir)
         self.sketch_path = os.path.join(args.base_path, args.sketch_dir)
 
+        if not os.path.exists(args.sample_dir):
+            os.mkdir(args.sample_dir)
+        if not os.path.exists(args.fake_photo_path):
+            os.mkdir(args.fake_photo_path)
+        if not os.path.exists(args.fake_sketch_path):
+            os.mkdir(args.fake_sketch_path)
+
     def build_model(self):
         self.discriminator = Discriminator(args)
         self.generator = Generator(args)
@@ -95,9 +103,6 @@ class GAN():
     def train(self):
         # Device configuration
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        if not os.path.exists(args.sample_dir):
-            os.mkdir(args.sample_dir)
 
         train_dict = {}
         train_dict['D_losses'] = []
@@ -122,9 +127,7 @@ class GAN():
 
             # for idx, item in enumerate(self.data_loader):
             for idx in range(len(self.dataset)):
-                # ================================================== #
-                #               Train the Discriminator              #
-                # ================================================== #
+                # Train the Discriminator
                 # Train discriminator more especially when you have noise
                 # Compute BCE_Loss using real images
                 # y is input, x is label
@@ -149,9 +152,7 @@ class GAN():
                 d_loss.backward(retain_graph=True)
                 self.d_optimizer.step()
 
-                # ================================================= #
-                #                Train the Generator                #
-                # ================================================= #
+                # Train the Generator
                 # Train G to maximize log(D(G(z))) instead of minimizing log(1-D(G(z)))
                 g_loss = self.criterion(output_z, real_labels)
                 G_losses.append(g_loss.item())
@@ -163,13 +164,11 @@ class GAN():
 
                 # Save images
                 # Save real images
-
                 if (epoch+1) == 1:
+                    # pass
                     path = os.path.join(args.sample_dir, 'real_sketch-idx{}.jpg'.format(idx))
-                    # vutils.save_image(sketch.mul(-255).add(1).byte(),path)
+                    vutils.save_image(sketch.mul(-255).add(1).byte(),path)
                     # Initially, photo_matrix.size() = sketch_matrix.size() = torch.Size([13, 643968])
-                    # print("First epoch   ", "Iter: ", num_iter)
-
 
                 # Save fake images
                 if (epoch+1) > args.epoch_save:
@@ -179,19 +178,25 @@ class GAN():
                     # Perform SVD on each channel
                     fake_photo = Variable(torch.FloatTensor())
                     fake_sketch = fake_sketch.cpu()
+
                     for channel in range(3):
                         fake_sketch_patch = to_patch(fake_sketch.squeeze(0), channel=channel)
                         weight_matrix = calculate_weight(fake_sketch_patch, self.dataset.sketch_matrix, self.dataset.hidden_sketch_matrix)
                         fake_photo_patch = torch.mm(torch.cat((self.dataset.photo_matrix, self.dataset.hidden_photo_matrix),1), weight_matrix)
                         # Reconstruct the photo from the estimated photo_patch_matrix
-                        print('Fake_photo_patch: ', fake_photo_patch.size())  # (13, 468)
+                        print('Fake_photo_patch: ', fake_photo_patch.size())  # (13, 7488)
                         fake_photo = torch.cat((fake_photo, inverse_to_patch(fake_photo_patch).unsqueeze(0)), 0)
+                        del fake_photo_patch
+                        del weight_matrix
+                    # end for
 
                     self.dataset.hidden_sketch_matrix = torch.cat((self.dataset.hidden_sketch_matrix, fake_sketch_patch), 1)
                     vutils.save_image(fake_sketch.mul(-255).add(1).byte(), save_sketch_path)
                     self.dataset.hidden_photo_matrix = torch.cat((self.dataset.hidden_photo_matrix, fake_photo_patch), 1)
-                    vutils.save_image(fake_photo.mul(-255).add(1).byte(), save_photo_path) #??
+                    vutils.save_image(fake_photo.mul(-255).add(1).byte(), save_photo_path)
+
                 num_iter += 1
+
             # end for
             epoch_end_time = time.time()
             time_per_epoch = epoch_end_time - epoch_start_time
@@ -201,7 +206,6 @@ class GAN():
             train_dict['G_losses'].append(torch.mean(torch.FloatTensor(G_losses)))
             train_dict['time_per_epoch'].append(time_per_epoch)
             print('Epoch: [%d/%d] - time_per_epoch: %.2f, d_loss: %.3f, g_loss: %.3f' % ((epoch + 1), args.epochs, time_per_epoch, train_dict['D_losses'][-1], train_dict['G_losses'][-1]))
-
         # end for
 
         end_time = time.time()

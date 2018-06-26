@@ -110,22 +110,29 @@ def calculate_weight(x_prime, x_o, x_h, empty=False):
     sx = scipy.sparse.csc_matrix(x)
     U, Sigma, V_T = sparsesvd(sx, 13)
     V = np.transpose(V_T)
+    # Use pytorch Tensor below to take advantage of GPU
+    # V_T = torch.from_numpy(V_T).cuda()
+    # V = torch.t(V_T)
 
     V_x_prime = V[0:x_prime.size(1), :]
     V_x_o = V[x_prime.size(1):(x_prime.size(1)+x_o.size(1)), :]
     print(V_x_prime.shape, V_x_o.shape)
-    W_oh = np.dot(V_x_o, np.transpose(V_x_prime))
+    W_oh = matrix_multiplication(V_x_o, np.transpose(V_x_prime))
     # W_oh = sparse.csc_matrix(V_x_o).dot(sparse.csc_matrix(np.transpose(V_x_prime)))
     W_oh = torch.from_numpy(W_oh)
     print('W_oh size: ', W_oh.size())
 
     V_x_h = V[(x_prime.size(1)+x_o.size(1)):, :]
-    W_ho = np.dot(V_x_h, np.transpose(V_x_prime))
+    W_ho = matrix_multiplication(V_x_h, np.transpose(V_x_prime))
     W_ho = torch.from_numpy(W_ho)
     print('W_ho size: ', W_ho.size())
 
-    # return W_oh, W_ho
-    return torch.cat((W_oh, W_ho), 0) # Concatenate along the row
+    W = torch.zeros([W_oh.size(0) + W_ho.size(0), W_oh.size(1)])
+    W[:W_oh.size(0), :] = W_oh
+    if not (W_ho.size(0) == 0):
+        W[W_oh.size(0):, :] = W_ho
+    return W
+    # return torch.cat((W_oh, W_ho), 0) # Concatenate along the row
 
 def matrix_multiplication(x, y):
     '''
