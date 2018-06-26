@@ -34,7 +34,7 @@ parser.add_argument('--photo_dir', default='photo/', type=str)
 parser.add_argument('--sketch_dir', default='sketch/', type=str)
 parser.add_argument('--fake_photo_path', default='hidden_training_data/photo/', type=str)
 parser.add_argument('--fake_sketch_path', default='hidden_training_data/sketch/', type=str)
-parser.add_argument('--pretrain_epochs', default=10, type=int)  # Pretrain the discriminator
+parser.add_argument('--pretrain_epochs', default=0, type=int)  # Pretrain the discriminator
 parser.add_argument('--epoch_save', default=20, type=int)   # After 10 epochs, starting saving fake images(sketches)
 
 args = parser.parse_args()
@@ -91,7 +91,7 @@ class GAN():
         self.discriminator = Discriminator(args)
         self.generator = Generator(args)
         # Use SGD for discriminator and ADAM for generator
-        self.d_optimizer = torch.optim.Adam(self.discriminator.parameters(), betas=(args.beta_lo,args.beta_hi), lr=args.lr)
+        self.d_optimizer = torch.optim.SGD(self.discriminator.parameters(), lr=args.lr)
         self.g_optimizer = torch.optim.Adam(self.generator.parameters(), betas=(args.beta_lo,args.beta_hi), lr=args.lr)
         self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer, step_size = args.step_size, gamma = args.gamma)
         self.g_scheduler = torch.optim.lr_scheduler.StepLR(self.g_optimizer, step_size = args.step_size, gamma = args.gamma)
@@ -139,11 +139,15 @@ class GAN():
                 output_x = self.discriminator(y,x)  # output_x.size() = (b_size, h)
                 d_loss_real = self.criterion(output_x, real_labels)
 
-                # Compute BCE_Loss using fake images
-                self.z.data.uniform_(-1,1).to(device)   # z.size() = args.b_size, args.h
-                fake_sketch = self.generator(self.z, x) # fake_sketch.size() = b_size, 3, 256, 256
-                output_z = self.discriminator(fake_sketch, x)
-                d_loss_fake = self.criterion(output_z, fake_labels)
+                if (epoch < args.pretrain_epochs):
+                    d_loss_fake = 0
+                else :
+                    # Compute BCE_Loss using fake images
+                    self.z.data.normal_(0,0.6).to(device)   # z.size() = args.b_size, args.h
+                    fake_sketch = self.generator(self.z, x) # fake_sketch.size() = b_size, 3, 256, 256
+                    output_z = self.discriminator(fake_sketch, x)
+                    d_loss_fake = self.criterion(output_z, fake_labels)
+
                 d_loss = d_loss_real + d_loss_fake
                 D_losses.append(d_loss.item())
 
@@ -152,15 +156,18 @@ class GAN():
                 d_loss.backward(retain_graph=True)
                 self.d_optimizer.step()
 
-                # Train the Generator
-                # Train G to maximize log(D(G(z))) instead of minimizing log(1-D(G(z)))
-                g_loss = self.criterion(output_z, real_labels)
-                G_losses.append(g_loss.item())
+                if (epoch < args.pretrain_epochs):
+                    G_losses.append(0)  # Don't train the generator
+                else:
+                    # Train the Generator
+                    # Train G to maximize log(D(G(z))) instead of minimizing log(1-D(G(z)))
+                    g_loss = self.criterion(output_z, real_labels)
+                    G_losses.append(g_loss.item())
 
-                # Backpropagation and optimization
-                self.reset_gradient()
-                g_loss.backward(retain_graph=True)
-                self.g_optimizer.step()
+                    # Backpropagation and optimization
+                    self.reset_gradient()
+                    g_loss.backward(retain_graph=True)
+                    self.g_optimizer.step()
 
                 # Save images
                 # Save real images
@@ -186,7 +193,6 @@ class GAN():
                         # Reconstruct the photo from the estimated photo_patch_matrix
                         print('Fake_photo_patch: ', fake_photo_patch.size())  # (13, 7488)
                         fake_photo = torch.cat((fake_photo, inverse_to_patch(fake_photo_patch).unsqueeze(0)), 0)
-                        del fake_photo_patch
                         del weight_matrix
                     # end for
 
@@ -194,6 +200,8 @@ class GAN():
                     vutils.save_image(fake_sketch.mul(-255).add(1).byte(), save_sketch_path)
                     self.dataset.hidden_photo_matrix = torch.cat((self.dataset.hidden_photo_matrix, fake_photo_patch), 1)
                     vutils.save_image(fake_photo.mul(-255).add(1).byte(), save_photo_path)
+                    del fake_sketch_patch, fake_photo_patch
+                    del fake_sketch, fake_photo
 
                 num_iter += 1
 

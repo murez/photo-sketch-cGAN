@@ -109,23 +109,23 @@ def calculate_weight(x_prime, x_o, x_h, empty=False):
     x = x.detach().numpy()
     sx = scipy.sparse.csc_matrix(x)
     U, Sigma, V_T = sparsesvd(sx, 13)
-    V = np.transpose(V_T)
+    # V = np.transpose(V_T)
     # Use pytorch Tensor below to take advantage of GPU
-    # V_T = torch.from_numpy(V_T).cuda()
-    # V = torch.t(V_T)
+    V_T = torch.from_numpy(V_T).cuda()
+    V = torch.t(V_T)
 
     V_x_prime = V[0:x_prime.size(1), :]
     V_x_o = V[x_prime.size(1):(x_prime.size(1)+x_o.size(1)), :]
-    print(V_x_prime.shape, V_x_o.shape)
-    W_oh = matrix_multiplication(V_x_o, np.transpose(V_x_prime))
+    W_oh = matrix_multiplication(V_x_o, torch.t(V_x_prime))
     # W_oh = sparse.csc_matrix(V_x_o).dot(sparse.csc_matrix(np.transpose(V_x_prime)))
-    W_oh = torch.from_numpy(W_oh)
-    print('W_oh size: ', W_oh.size())
+    # W_oh = torch.from_numpy(W_oh)
 
-    V_x_h = V[(x_prime.size(1)+x_o.size(1)):, :]
-    W_ho = matrix_multiplication(V_x_h, np.transpose(V_x_prime))
-    W_ho = torch.from_numpy(W_ho)
-    print('W_ho size: ', W_ho.size())
+    if (x_h.size(0) == 0):
+        W_ho = torch.zeros(0)
+    else:
+        V_x_h = V[(x_prime.size(1)+x_o.size(1)):, :]
+        W_ho = matrix_multiplication(V_x_h, torch.t(V_x_prime))
+    # W_ho = torch.from_numpy(W_ho)
 
     W = torch.zeros([W_oh.size(0) + W_ho.size(0), W_oh.size(1)])
     W[:W_oh.size(0), :] = W_oh
@@ -136,20 +136,19 @@ def calculate_weight(x_prime, x_o, x_h, empty=False):
 
 def matrix_multiplication(x, y):
     '''
-    Input: numpy array
+    Input: torch tensor
     '''
-    step = y.shape[1]
-    size = x.shape[0]
+    step = y.size(1)
+    size = x.size(0)
     total_steps = (int)(size / step)
 
-    mini_x = csr_matrix(x[0:step, :])
-    y = csr_matrix(y)
-    output = np.empty([size, step])
-    output[0:step, :] = mini_x.dot(y).A
+    mini_x = x[0:step, :]
+    output = torch.zeros([size, step])
+    output[0:step, :] = torch.mm(mini_x, y)
     for i in range(total_steps):
         if (i==0):
             continue
         else:
-            mini_x = csr_matrix(x[i*step:(i+1)*step, :])
-            output[i*step:(i+1)*step, :] = mini_x.dot(y).A
+            mini_x = x[i*step:(i+1)*step, :]
+            output[i*step:(i+1)*step, :] = torch.mm(mini_x, y)
     return output

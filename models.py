@@ -37,12 +37,12 @@ class Generator(nn.Module):
         self.deconv5 = nn.ConvTranspose2d(self.num_channel, 3, 3, 1, 1)
 
     def forward(self, input, label):
-        x = F.elu(self.deconv0_1_bn(self.deconv0_1(input)), True)
-        y = F.elu(self.deconv0_2_bn(self.deconv0_2(label)), True)
+        x = F.leaky_relu(self.deconv0_1_bn(self.deconv0_1(input)), True)
+        y = F.leaky_relu(self.deconv0_2_bn(self.deconv0_2(label)), True)
         x = torch.cat((x,y), 1)
-        x = F.elu(self.deconv2_bn(self.deconv2(x)), True)
-        x = F.elu(self.deconv3_bn(self.deconv3(x)), True)
-        x = F.elu(self.deconv4_bn(self.deconv4(x)), True)
+        x = F.leaky_relu(self.deconv2_bn(self.deconv2(x)), True)
+        x = F.leaky_relu(self.deconv3_bn(self.deconv3(x)), True)
+        x = F.leaky_relu(self.deconv4_bn(self.deconv4(x)), True)
         x = F.sigmoid(self.deconv5(x))
         return x
 
@@ -79,20 +79,20 @@ class Discriminator(nn.Module):
 
     def forward(self, input, label):
         # input, label must be size of (b_size, C, H, W)
-        x = F.elu(self.conv0_1(input), True)
-        y = F.elu(self.conv0_2(label), True)
+        x = F.leaky_relu(self.conv0_1(input), True)
+        y = F.leaky_relu(self.conv0_2(label), True)
         x = torch.cat((x,y), 1)     # Discriminator conditions on label
 
-        x = F.elu(self.conv1_bn(self.conv1(x)), True)
-        x = F.elu(self.conv2_bn(self.conv2(x)), True)
+        x = F.leaky_relu(self.conv1_bn(self.conv1(x)), True)
+        x = F.leaky_relu(self.conv2_bn(self.conv2(x)), True)
         x = self.pool1(x)
 
-        x = F.elu(self.conv3_bn(self.conv3(x)), True)
-        x = F.elu(self.conv4_bn(self.conv4(x)), True)
+        x = F.leaky_relu(self.conv3_bn(self.conv3(x)), True)
+        x = F.leaky_relu(self.conv4_bn(self.conv4(x)), True)
         x = self.pool2(x)
 
-        x = F.elu(self.conv5_bn(self.conv5(x)), True)
-        x = F.elu(self.conv6_bn(self.conv6(x)), True)
+        x = F.leaky_relu(self.conv5_bn(self.conv5(x)), True)
+        x = F.leaky_relu(self.conv6_bn(self.conv6(x)), True)
         x = x.view(self.b_size, (self.scale_size/4)*(self.scale_size/4)*3*self.num_channel)
         x = F.sigmoid(self.fc(x))
         return x    # Size of (b_size, h), value should be between 0 and 1
