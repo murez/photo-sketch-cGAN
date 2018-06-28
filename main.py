@@ -18,7 +18,7 @@ parser.add_argument('--cuda', action='store_true')      # gpu device
 parser.add_argument('--b_size', default=1, type=int)   # batch size
 parser.add_argument('--h', default=64, type=int)        # latent size
 parser.add_argument('--nc', default=64, type=int)       # number of channel
-parser.add_argument('--epochs', default=20, type=int)  # epochs
+parser.add_argument('--epochs', default=50, type=int)  # epochs
 parser.add_argument('--lr',default=0.001, type=float)  # learning rate
 # parser.add_argument('--lr_update_step', default=3000, type=float)
 parser.add_argument('--lr_update_type', default=1, type=int)
@@ -34,8 +34,8 @@ parser.add_argument('--photo_dir', default='photo/', type=str)
 parser.add_argument('--sketch_dir', default='sketch/', type=str)
 parser.add_argument('--fake_photo_path', default='hidden_training_data/photo/', type=str)
 parser.add_argument('--fake_sketch_path', default='hidden_training_data/sketch/', type=str)
-parser.add_argument('--pretrain_epochs', default=0, type=int)  # Pretrain the discriminator
-parser.add_argument('--epoch_save', default=20, type=int)   # After 10 epochs, starting saving fake images(sketches)
+parser.add_argument('--pretrain_epochs', default=10, type=int)  # Pretrain the discriminator
+parser.add_argument('--epoch_save', default=49, type=int)   # After 10 epochs, starting saving fake images(sketches)
 
 args = parser.parse_args()
 
@@ -92,7 +92,8 @@ class GAN():
         self.generator = Generator(args)
         # Use SGD for discriminator and ADAM for generator
         self.d_optimizer = torch.optim.SGD(self.discriminator.parameters(), lr=args.lr)
-        self.g_optimizer = torch.optim.Adam(self.generator.parameters(), betas=(args.beta_lo,args.beta_hi), lr=args.lr)
+        self.g_optimizer = torch.optim.SGD(self.generator.parameters(), lr=args.lr)
+         # betas=(args.beta_lo,args.beta_hi)
         self.d_scheduler = torch.optim.lr_scheduler.StepLR(self.d_optimizer, step_size = args.step_size, gamma = args.gamma)
         self.g_scheduler = torch.optim.lr_scheduler.StepLR(self.g_optimizer, step_size = args.step_size, gamma = args.gamma)
 
@@ -112,6 +113,12 @@ class GAN():
 
         print('Start training!')
         start_time = time.time()
+
+        fake_photo = torch.ones(0)
+        fake_photo_patch = torch.ones(0)
+        fake_sketch = torch.ones(0)
+        fake_sketch_patch = torch.ones(0)
+        weight_matrix = torch.ones(0)
 
         for epoch in range(args.epochs):
             D_losses = []
@@ -139,16 +146,16 @@ class GAN():
                 output_x = self.discriminator(y,x)  # output_x.size() = (b_size, h)
                 d_loss_real = self.criterion(output_x, real_labels)
 
-                if (epoch < args.pretrain_epochs):
-                    d_loss_fake = 0
-                else :
-                    # Compute BCE_Loss using fake images
-                    self.z.data.normal_(0,0.6).to(device)   # z.size() = args.b_size, args.h
-                    fake_sketch = self.generator(self.z, x) # fake_sketch.size() = b_size, 3, 256, 256
-                    output_z = self.discriminator(fake_sketch, x)
-                    d_loss_fake = self.criterion(output_z, fake_labels)
+                # Compute BCE_Loss using fake images
+                self.z.data.normal_(0,0.6).to(device)   # z.size() = args.b_size, args.h
+                fake_sketch = self.generator(self.z, x) # fake_sketch.size() = b_size, 3, 256, 256
+                output_z = self.discriminator(fake_sketch, x)
+                d_loss_fake = self.criterion(output_z, fake_labels)
 
-                d_loss = d_loss_real + d_loss_fake
+                if (epoch < args.pretrain_epochs):
+                    d_loss = d_loss_real + d_loss_fake
+                else:
+                    d_loss = d_loss_real
                 D_losses.append(d_loss.item())
 
                 # Backpropagation and optimization
@@ -156,14 +163,12 @@ class GAN():
                 d_loss.backward(retain_graph=True)
                 self.d_optimizer.step()
 
-                if (epoch < args.pretrain_epochs):
-                    G_losses.append(0)  # Don't train the generator
-                else:
-                    # Train the Generator
-                    # Train G to maximize log(D(G(z))) instead of minimizing log(1-D(G(z)))
-                    g_loss = self.criterion(output_z, real_labels)
-                    G_losses.append(g_loss.item())
+                # Train the Generator
+                # Train G to maximize log(D(G(z))) instead of minimizing log(1-D(G(z)))
+                g_loss = self.criterion(output_z, real_labels)
+                G_losses.append(g_loss.item())
 
+                if (epoch >= args.pretrain_epochs):
                     # Backpropagation and optimization
                     self.reset_gradient()
                     g_loss.backward(retain_graph=True)
@@ -193,15 +198,12 @@ class GAN():
                         # Reconstruct the photo from the estimated photo_patch_matrix
                         print('Fake_photo_patch: ', fake_photo_patch.size())  # (13, 7488)
                         fake_photo = torch.cat((fake_photo, inverse_to_patch(fake_photo_patch).unsqueeze(0)), 0)
-                        del weight_matrix
                     # end for
 
                     self.dataset.hidden_sketch_matrix = torch.cat((self.dataset.hidden_sketch_matrix, fake_sketch_patch), 1)
                     vutils.save_image(fake_sketch.mul(-255).add(1).byte(), save_sketch_path)
                     self.dataset.hidden_photo_matrix = torch.cat((self.dataset.hidden_photo_matrix, fake_photo_patch), 1)
                     vutils.save_image(fake_photo.mul(-255).add(1).byte(), save_photo_path)
-                    del fake_sketch_patch, fake_photo_patch
-                    del fake_sketch, fake_photo
 
                 num_iter += 1
 

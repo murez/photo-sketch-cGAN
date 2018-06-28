@@ -127,12 +127,12 @@ def calculate_weight(x_prime, x_o, x_h, empty=False):
         W_ho = matrix_multiplication(V_x_h, torch.t(V_x_prime))
     # W_ho = torch.from_numpy(W_ho)
 
-    W = torch.zeros([W_oh.size(0) + W_ho.size(0), W_oh.size(1)])
-    W[:W_oh.size(0), :] = W_oh
-    if not (W_ho.size(0) == 0):
-        W[W_oh.size(0):, :] = W_ho
-    return W
-    # return torch.cat((W_oh, W_ho), 0) # Concatenate along the row
+    # W = torch.zeros([W_oh.size(0) + W_ho.size(0), W_oh.size(1)])
+    # W[:W_oh.size(0), :] = W_oh
+    # if not (W_ho.size(0) == 0):
+    #     W[W_oh.size(0):, :] = W_ho
+    # return W
+    return torch.cat((W_oh, W_ho), 0) # Concatenate along the row
 
 def matrix_multiplication(x, y):
     '''
